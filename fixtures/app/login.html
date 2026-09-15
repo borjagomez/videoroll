@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sign in · Acme Desk</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body class="centered">
+  <main class="card" role="main">
+    <h1>Acme Desk</h1>
+    <p class="muted">Sign in to your workspace</p>
+    <form id="login-form">
+      <label for="email">Work email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required />
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+      <button type="submit">Sign in</button>
+      <p id="error" class="error" hidden>That email and password do not match.</p>
+    </form>
+  </main>
+  <script>
+    document.getElementById("login-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      // Fixture credentials. This app exists only to be driven by tests.
+      if (email && password === "demo1234") {
+        localStorage.setItem("acme.session", JSON.stringify({ email, at: Date.now() }));
+        window.location.href = "./app.html";
+      } else {
+        document.getElementById("error").hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

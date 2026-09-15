@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>http://localhost:4173/index.html</loc></url>
+  <url><loc>http://localhost:4173/articles/approve-a-time-off-request.html</loc></url>
+  <url><loc>http://localhost:4173/articles/reject-a-time-off-request.html</loc></url>
+  <url><loc>http://localhost:4173/articles/submit-an-expense.html</loc></url>
+  <url><loc>http://localhost:4173/articles/browse-the-people-directory.html</loc></url>
+  <url><loc>http://localhost:4173/articles/sign-in-to-acme-desk.html</loc></url>
+</urlset>

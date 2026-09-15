@@ -1,0 +1,11 @@
+node_modules/
+dist/
+workspace/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# stray screenshot output
+undefined/

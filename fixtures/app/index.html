@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Acme Desk</title>
+  <script>
+    window.location.replace(
+      localStorage.getItem("acme.session") ? "./app.html" : "./login.html"
+    );
+  </script>
+</head>
+<body></body>
+</html>

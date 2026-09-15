@@ -1,0 +1,58 @@
+{
+  "slug": "approve-time-off",
+  "request": "approve a time off request",
+  "featureName": "Approve a time off request",
+  "product": "acme",
+  "profile": "demo",
+  "startUrl": "http://localhost:4174/app.html",
+  "createdAt": "2026-09-15T00:00:00.000Z",
+  "divergences": [],
+  "steps": [
+    {
+      "id": 1,
+      "action": "click",
+      "locator": { "kind": "role", "role": "link", "name": "Time off", "exact": true },
+      "narration": "Everything waiting on a manager lives in one place, so we start in the Time off section.",
+      "caption": "Open Time off",
+      "settleMs": 700,
+      "highlight": true
+    },
+    {
+      "id": 2,
+      "action": "click",
+      "locator": { "kind": "role", "role": "button", "name": "Approve", "exact": true, "nth": 0 },
+      "narration": "Dana has asked for five days in May, and approving it opens a short confirmation.",
+      "caption": "Approve the request",
+      "settleMs": 800,
+      "highlight": true
+    },
+    {
+      "id": 3,
+      "action": "fill",
+      "locator": { "kind": "label", "name": "Note for the employee (optional)", "exact": true },
+      "value": "Enjoy the break - we have cover for that week.",
+      "narration": "A note is optional, but it travels with the approval email and saves a separate message.",
+      "caption": "Add a note",
+      "settleMs": 600,
+      "highlight": true
+    },
+    {
+      "id": 4,
+      "action": "click",
+      "locator": { "kind": "role", "role": "button", "name": "Confirm approval", "exact": true },
+      "narration": "Confirming updates her balance and notifies her straight away.",
+      "caption": "Confirm",
+      "settleMs": 900,
+      "highlight": true
+    },
+    {
+      "id": 5,
+      "action": "wait",
+      "waitForText": "Approved Dana Wu's time off",
+      "narration": "The row flips to approved, and the whole thing took under a minute.",
+      "caption": "Approved",
+      "settleMs": 1200,
+      "highlight": false
+    }
+  ]
+}

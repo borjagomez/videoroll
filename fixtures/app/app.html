@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Acme Desk</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="shell">
+    <nav class="sidebar" aria-label="Main">
+      <div class="brand">Acme Desk</div>
+      <a href="#dashboard" data-view="dashboard">Dashboard</a>
+      <a href="#time-off" data-view="time-off">Time off</a>
+      <a href="#expenses" data-view="expenses">Expenses</a>
+      <a href="#people" data-view="people">People</a>
+      <a href="#settings" data-view="settings">Settings</a>
+    </nav>
+
+    <main class="content" role="main">
+      <section id="view-dashboard" class="view">
+        <h2>Dashboard</h2>
+        <p class="subtitle">Everything waiting on you today.</p>
+        <table>
+          <caption class="sr-only">Pending items</caption>
+          <thead><tr><th>Item</th><th>Owner</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Time off requests</td><td>You</td><td><span class="pill pending" id="dash-pending">3 pending</span></td></tr>
+            <tr><td>Expense reports</td><td>You</td><td><span class="pill pending">2 pending</span></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="view-time-off" class="view" hidden>
+        <h2>Time off</h2>
+        <p class="subtitle">Review and decide on your team's requests.</p>
+        <table>
+          <thead>
+            <tr><th>Employee</th><th>Type</th><th>Dates</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="time-off-rows"></tbody>
+        </table>
+      </section>
+
+      <section id="view-expenses" class="view" hidden>
+        <h2>Expenses</h2>
+        <p class="subtitle">Submit and track expense reports.</p>
+        <button class="inline" id="new-expense">New expense</button>
+        <table style="margin-top:20px">
+          <thead><tr><th>Merchant</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody id="expense-rows"></tbody>
+        </table>
+      </section>
+
+      <section id="view-people" class="view" hidden>
+        <h2>People</h2>
+        <p class="subtitle">Your directory.</p>
+        <table>
+          <thead><tr><th>Name</th><th>Role</th><th>Team</th></tr></thead>
+          <tbody>
+            <tr><td>Dana Wu</td><td>Designer</td><td>Product</td></tr>
+            <tr><td>Reza Ahmadi</td><td>Engineer</td><td>Platform</td></tr>
+            <tr><td>Sam Okafor</td><td>Support lead</td><td>Success</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="view-settings" class="view" hidden>
+        <h2>Settings</h2>
+        <p class="subtitle">Workspace configuration.</p>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="approve-dialog">
+    <h3 id="approve-title">Approve time off</h3>
+    <label for="approve-note">Note for the employee (optional)</label>
+    <textarea id="approve-note" rows="3" placeholder="Enjoy the break!"></textarea>
+    <div class="row">
+      <button class="inline" id="confirm-approve">Confirm approval</button>
+      <button class="inline secondary" id="cancel-approve">Cancel</button>
+    </div>
+  </dialog>
+
+  <dialog id="expense-dialog">
+    <h3>New expense</h3>
+    <label for="merchant">Merchant</label>
+    <input id="merchant" />
+    <label for="amount">Amount</label>
+    <input id="amount" type="number" step="0.01" />
+    <!-- Wrapping label, as many real apps emit. The label's textContent
+         includes every option, which is what broke locator derivation. -->
+    <label>Category
+      <select id="category">
+        <option>Travel</option><option>Meals</option><option>Software</option>
+      </select>
+    </label>
+    <div class="row">
+      <button class="inline" id="save-expense">Save expense</button>
+      <button class="inline secondary" id="cancel-expense">Cancel</button>
+    </div>
+  </dialog>
+
+  <script>
+    if (!localStorage.getItem("acme.session")) window.location.replace("./login.html");
+
+    const requests = [
+      { id: 1, who: "Dana Wu",     type: "Vacation",     dates: "12–16 May", status: "Pending" },
+      { id: 2, who: "Reza Ahmadi", type: "Sick leave",   dates: "3 May",     status: "Pending" },
+      { id: 3, who: "Sam Okafor",  type: "Parental",     dates: "1–28 Jun",  status: "Pending" },
+      { id: 4, who: "Dana Wu",     type: "Vacation",     dates: "2–4 Apr",   status: "Approved" },
+    ];
+    const expenses = [
+      { merchant: "Northwind Rail", amount: "84.20", status: "Pending" },
+      { merchant: "Cafe Lisbon",    amount: "31.00", status: "Pending" },
+    ];
+    let activeId = null;
+
+    const pill = (status) =>
+      `<span class="pill ${status.toLowerCase()}">${status}</span>`;
+
+    function renderTimeOff() {
+      document.getElementById("time-off-rows").innerHTML = requests
+        .map((r) => `
+          <tr>
+            <td>${r.who}</td><td>${r.type}</td><td>${r.dates}</td>
+            <td>${pill(r.status)}</td>
+            <td><div class="actions">${
+              r.status === "Pending"
+                ? `<button class="inline" data-approve="${r.id}">Approve</button>
+                   <button class="inline secondary" data-reject="${r.id}">Reject</button>`
+                : "—"
+            }</div></td>
+          </tr>`)
+        .join("");
+      const pending = requests.filter((r) => r.status === "Pending").length;
+      document.getElementById("dash-pending").textContent = `${pending} pending`;
+    }
+
+    function renderExpenses() {
+      document.getElementById("expense-rows").innerHTML = expenses
+        .map((e) => `<tr><td>${e.merchant}</td><td>€${e.amount}</td><td>${pill(e.status)}</td></tr>`)
+        .join("");
+    }
+
+    function show(view) {
+      for (const section of document.querySelectorAll(".view")) {
+        section.hidden = section.id !== `view-${view}`;
+      }
+      for (const link of document.querySelectorAll(".sidebar a")) {
+        if (link.dataset.view === view) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+      }
+    }
+
+    function toast(message) {
+      const el = document.createElement("div");
+      el.className = "toast";
+      el.setAttribute("role", "status");
+      el.textContent = message;
+      document.body.append(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+
+    for (const link of document.querySelectorAll(".sidebar a")) {
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        location.hash = link.getAttribute("href");
+        show(link.dataset.view);
+      });
+    }
+
+    document.addEventListener("click", (event) => {
+      const approve = event.target.closest("[data-approve]");
+      if (approve) {
+        activeId = Number(approve.dataset.approve);
+        const req = requests.find((r) => r.id === activeId);
+        document.getElementById("approve-title").textContent =
+          `Approve ${req.type.toLowerCase()} for ${req.who}`;
+        document.getElementById("approve-dialog").showModal();
+      }
+      const reject = event.target.closest("[data-reject]");
+      if (reject) {
+        const req = requests.find((r) => r.id === Number(reject.dataset.reject));
+        req.status = "Rejected";
+        renderTimeOff();
+        toast(`Rejected ${req.who}'s request`);
+      }
+    });
+
+    document.getElementById("confirm-approve").addEventListener("click", () => {
+      const req = requests.find((r) => r.id === activeId);
+      req.status = "Approved";
+      document.getElementById("approve-dialog").close();
+      document.getElementById("approve-note").value = "";
+      renderTimeOff();
+      toast(`Approved ${req.who}'s time off`);
+    });
+    document.getElementById("cancel-approve").addEventListener("click", () =>
+      document.getElementById("approve-dialog").close());
+
+    document.getElementById("new-expense").addEventListener("click", () =>
+      document.getElementById("expense-dialog").showModal());
+    document.getElementById("cancel-expense").addEventListener("click", () =>
+      document.getElementById("expense-dialog").close());
+    document.getElementById("save-expense").addEventListener("click", () => {
+      const merchant = document.getElementById("merchant").value || "Untitled";
+      const amount = document.getElementById("amount").value || "0.00";
+      expenses.unshift({ merchant, amount, status: "Pending" });
+      document.getElementById("expense-dialog").close();
+      renderExpenses();
+      toast(`Saved expense for ${merchant}`);
+    });
+
+    renderTimeOff();
+    renderExpenses();
+    show((location.hash || "#dashboard").slice(1));
+  </script>
+</body>
+</html>
