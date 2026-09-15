@@ -168,6 +168,61 @@ reaches that word; other providers estimate from word length.
 into the picture. That needs an ffmpeg built with libass — Homebrew's default
 build has none, and `vdg doctor` says so.
 
+## Running it as a service
+
+`vdg serve` exposes the pipeline over HTTP with an agent in front of it, so a
+chat front end can ask for demos in plain language without knowing anything
+about slugs or features.
+
+```bash
+VDG_API_TOKEN=$(openssl rand -hex 16) pnpm vdg serve
+```
+
+```
+POST /chat          { message } or { messages: [...] }   → SSE
+GET  /demos                                              → what has been rendered
+GET  /demos/:slug
+GET  /jobs/:id                      add ?stream=1 for live progress
+GET  /videos/:slug/demo.mp4         range requests, so video scrubs
+GET  /health                        no auth; reports missing prerequisites
+```
+
+Everything but `/health` needs `Authorization: Bearer $VDG_API_TOKEN`. Asset
+routes also accept `?token=`, because a `<video>` tag cannot set a header.
+
+The agent checks the library before recording — an existing demo comes back in
+milliseconds, and only genuinely new requests pay the few minutes. Its tools are
+`list_demos`, `get_demo`, `search_features`, `render_demo` and `job_status`.
+
+**One render at a time.** Every demo drives the same tenant through one saved
+session, so two at once would fight over the same browser and the same records.
+Jobs queue and the agent reports the position. Parallelism needs more demo
+accounts, not more code.
+
+The SSE stream carries `text` deltas, `tool` calls, `stage` progress from the
+pipeline, and a final `done`. A comment ping every 15s stops proxies closing an
+idle connection during a long render.
+
+### In Docker
+
+```bash
+docker build -t vdg .
+docker run -p 8080:8080 -v "$PWD/workspace:/data" --env-file .env \
+  -e VDG_API_TOKEN=... vdg
+```
+
+The image is Playwright's, pinned to the same version as the dependency, plus
+ffmpeg. `/data` holds the catalogue, the session and every rendered demo, so
+mount it or a restart loses the library. Debian's ffmpeg includes libass, so
+`--burn-subs` works in the container even though it does not on macOS.
+
+| Variable | |
+|---|---|
+| `VDG_API_TOKEN` | bearer token; unset means the API is open (local only) |
+| `VDG_CORS_ORIGINS` | comma-separated origins, default `*` |
+| `VDG_SERVER_PRODUCT` / `VDG_SERVER_PROFILE` | which catalogue and session the agent uses |
+| `VDG_PORT` / `VDG_HOST` | default `8080` / `0.0.0.0` |
+
 ## Development
 
 ```bash

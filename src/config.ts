@@ -101,6 +101,20 @@ export const config = {
       process.env.VDG_USER_AGENT ??
       "video-demo-generator/0.1 (+docs ingestion; respects robots.txt)",
   },
+  server: {
+    port: Number(process.env.PORT ?? process.env.VDG_PORT ?? 8080),
+    host: process.env.VDG_HOST ?? "0.0.0.0",
+    /** Bearer token every endpoint but /health requires. */
+    token: process.env.VDG_API_TOKEN ?? "",
+    /** Comma-separated origins allowed to call the API from a browser. */
+    origins: (process.env.VDG_CORS_ORIGINS ?? "*")
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean),
+    /** Which catalogue and which saved session the agent works against. */
+    product: process.env.VDG_SERVER_PRODUCT ?? "factorial",
+    profile: process.env.VDG_SERVER_PROFILE ?? "demo",
+  },
   ffmpegBin: process.env.VDG_FFMPEG ?? "ffmpeg",
   ffprobeBin: process.env.VDG_FFPROBE ?? "ffprobe",
 } as const;

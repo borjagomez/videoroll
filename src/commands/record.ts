@@ -1,36 +1,13 @@
-import fs from "node:fs";
 import { buildStoryboard } from "../scout/storyboard.js";
-import { scout } from "../scout/scout.js";
-import { scoutOneShot } from "../scout/oneshot.js";
-import { recut } from "../compose/recut.js";
-import { narrate } from "../narrate/script.js";
-import { capture } from "../record/capture.js";
-import { compose } from "../compose/compose.js";
-import {
-  featureCatalogPath,
-  appMapPath,
-  storageStatePath,
-  storyboardPath,
-  stepsPath,
-  narrationPath,
-  timelinePath,
-  sessionCutPath,
-  rel,
-} from "../paths.js";
-import { readArtifact, writeArtifact, slugify, nowIso } from "../io.js";
+import { runDemo, assertReady, type RunDemoOptions } from "../pipeline.js";
+import { featureCatalogPath, appMapPath, storyboardPath, rel } from "../paths.js";
+import { readArtifact, writeArtifact, slugify } from "../io.js";
 import {
   FeatureCatalogSchema,
   AppMapSchema,
   StoryboardSchema,
-  DemoScriptSchema,
-  NarrationSchema,
-  TimelineSchema,
-  SessionCutSchema,
-  type AppMap,
-  type DemoScript,
-  type Storyboard,
 } from "../types.js";
-import { log, bold, dim } from "../log.js";
+import { log, bold, dim, fmtDuration } from "../log.js";
 
 export interface RecordOptions {
   product: string;
@@ -42,7 +19,6 @@ export interface RecordOptions {
   voice?: boolean;
   burnSubs?: boolean;
   headed?: boolean;
-  /** Match the feature and print the storyboard, then stop. */
   rawNarration?: boolean;
   /**
    * Scout and film in a single execution, for features that cannot survive
@@ -54,31 +30,26 @@ export interface RecordOptions {
   crf?: number;
 }
 
+/**
+ * The CLI face of `runDemo` - argument shuffling and pretty output, nothing
+ * else. The pipeline itself lives in src/pipeline.ts so the server runs the
+ * identical code path.
+ */
 export async function record(request: string, options: RecordOptions): Promise<number> {
   const product = slugify(options.product);
   const profile = slugify(options.profile);
-
-  if (!fs.existsSync(storageStatePath(profile))) {
-    throw new Error(
-      `No saved session for profile "${profile}". Run \`vdg connect\` first.`,
-    );
-  }
+  assertReady(product, profile);
 
   log.blank();
   log.info(`${bold("request")} ${request}`);
   log.info(`${bold("product")} ${product}   ${bold("profile")} ${profile}`);
   log.blank();
 
-  let script: DemoScript;
-
-  if (options.steps) {
-    script = readArtifact(options.steps, DemoScriptSchema);
-    log.ok(`Using the script at ${rel(options.steps)} (${script.steps.length} steps)`);
-  } else {
-    // Only needed when scouting - supplying --steps skips both.
+  // A dry run stops before anything touches the demo environment, so it builds
+  // the storyboard here rather than going near the pipeline.
+  if (options.dryRun && !options.steps) {
     const catalog = readArtifact(featureCatalogPath(product), FeatureCatalogSchema);
     const appMap = readArtifact(appMapPath(profile), AppMapSchema);
-
     const storyboard = await buildStoryboard({
       request,
       product,
@@ -92,146 +63,44 @@ export async function record(request: string, options: RecordOptions): Promise<n
     log.blank();
     log.info(`${bold(storyboard.featureName)}  ${dim(storyboard.startUrl)}`);
     for (const [i, scene] of storyboard.scenes.entries()) {
-      log.detail(`  ${i + 1}. ${scene.intent} — ${scene.docAction}`);
+      log.detail(`${i + 1}. ${scene.intent} — ${scene.docAction}`);
     }
     log.blank();
-
-    if (options.dryRun) {
-      log.info(
-        "Stopping here (--dry-run). Nothing was run against the demo environment.",
-      );
-      log.detail(`storyboard  ${rel(storyboardPath(storyboard.slug))}`);
-      log.blank();
-      return 0;
-    }
-
-    if (options.onePass) {
-      return runOnePass({ storyboard, appMap, profile, options });
-    }
-
-    script = await scout({
-      storyboard,
-      appMap,
-      profile,
-      ...(options.headed !== undefined ? { headed: options.headed } : {}),
-    });
-    writeArtifact(stepsPath(script.slug), DemoScriptSchema, script);
-    log.detail(`script  ${rel(stepsPath(script.slug))}`);
-
-    if (script.divergences.length > 0) {
-      log.blank();
-      log.warn("The live product differs from the documentation:");
-      for (const note of script.divergences) log.detail(`  · ${note}`);
-    }
+    log.info("Stopping here (--dry-run). Nothing was run against the demo environment.");
+    log.detail(`storyboard  ${rel(storyboardPath(storyboard.slug))}`);
+    log.blank();
+    return 0;
   }
 
-  log.blank();
-  const narration = await narrate({
-    script,
-    ...(options.voice === false ? { silent: true } : {}),
-    ...(options.rawNarration ? { skipPolish: true } : {}),
-  });
-  writeArtifact(narrationPath(script.slug), NarrationSchema, narration);
+  if (options.onePass) {
+    log.info(
+      "One-pass: the scout is filmed live, and only the steps it records are kept. " +
+        "There is no verification replay — that is the point.",
+    );
+    log.blank();
+  }
 
-  log.blank();
-  const { timeline, videoPath } = await capture({
-    script,
-    narration,
-    ...(options.headed !== undefined ? { headed: options.headed } : {}),
-  });
-  writeArtifact(timelinePath(script.slug), TimelineSchema, timeline);
-
-  log.blank();
-  await compose({
-    script,
-    narration,
-    timeline,
-    videoPath,
-    ...(options.burnSubs ? { burnSubs: true } : {}),
-    ...(options.crf !== undefined ? { crf: options.crf } : {}),
-  });
-  log.blank();
-  return 0;
-}
-
-interface OnePassInput {
-  storyboard: Storyboard;
-  appMap: AppMap;
-  profile: string;
-  options: RecordOptions;
-}
-
-/**
- * Scout, film, narrate and cut in a single execution of the demo.
- *
- * The order differs from the three-pass route out of necessity: there the
- * narration is written first and the camera holds each step for its line, but
- * here the action has already happened by the time there is a script to narrate.
- * So the lines are written after the fact and each shot is padded to fit.
- */
-async function runOnePass({
-  storyboard,
-  appMap,
-  profile,
-  options,
-}: OnePassInput): Promise<number> {
-  log.info(
-    "One-pass: the scout is filmed live, and only the steps it records are kept. " +
-      "There is no verification replay — that is the point.",
-  );
-  log.blank();
-
-  const shot = await scoutOneShot({
-    storyboard,
-    appMap,
+  const run: RunDemoOptions = {
+    request,
+    product,
     profile,
-    ...(options.headed !== undefined ? { headed: options.headed } : {}),
-  });
-  writeArtifact(stepsPath(shot.script.slug), DemoScriptSchema, shot.script);
-  log.detail(`script  ${rel(stepsPath(shot.script.slug))}`);
-
-  // The footage cost a live run; keep the cut points so it can be re-cut.
-  writeArtifact(sessionCutPath(shot.script.slug), SessionCutSchema, {
-    slug: shot.script.slug,
-    sourceVideo: shot.videoPath,
-    introMs: shot.introMs,
-    recordedAt: nowIso(),
-    segments: shot.segments,
-  });
-
-  if (shot.script.divergences.length > 0) {
-    log.blank();
-    log.warn("The live product differs from the documentation:");
-    for (const note of shot.script.divergences) log.detail(`  · ${note}`);
-  }
-
-  log.blank();
-  const narration = await narrate({
-    script: shot.script,
+    ...(options.feature ? { featureId: options.feature } : {}),
+    ...(options.steps ? { stepsFile: options.steps } : {}),
+    ...(options.onePass ? { onePass: true } : {}),
     ...(options.voice === false ? { silent: true } : {}),
-    ...(options.rawNarration ? { skipPolish: true } : {}),
-  });
-  writeArtifact(narrationPath(shot.script.slug), NarrationSchema, narration);
-
-  log.blank();
-  const { videoPath, timeline } = await recut({
-    slug: shot.script.slug,
-    sourceVideo: shot.videoPath,
-    segments: shot.segments,
-    narration,
-    introMs: shot.introMs,
-  });
-  writeArtifact(timelinePath(shot.script.slug), TimelineSchema, timeline);
-
-  log.blank();
-  await compose({
-    script: shot.script,
-    narration,
-    timeline,
-    videoPath,
+    ...(options.rawNarration ? { rawNarration: true } : {}),
     ...(options.burnSubs ? { burnSubs: true } : {}),
+    ...(options.headed !== undefined ? { headed: options.headed } : {}),
     ...(options.crf !== undefined ? { crf: options.crf } : {}),
-  });
+  };
+
+  const result = await runDemo(run);
+
+  log.blank();
+  log.ok(`${result.featureName} — ${fmtDuration(result.durationMs)}`);
+  log.info(`video      ${rel(result.videoPath)}`);
+  log.info(`subtitles  ${rel(result.srtPath)}  ${dim("(also embedded in the mp4)")}`);
+  log.info(`thumbnail  ${rel(result.thumbnailPath)}`);
   log.blank();
   return 0;
 }

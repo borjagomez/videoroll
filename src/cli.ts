@@ -104,6 +104,14 @@ program
     process.exitCode = await replayCommand(slug, opts);
   });
 
+program
+  .command("serve")
+  .description("run the HTTP service a chat front end talks to")
+  .action(async () => {
+    const { serveCommand } = await import("./commands/serve.js");
+    process.exitCode = await serveCommand();
+  });
+
 async function main() {
   try {
     await program.parseAsync(process.argv);

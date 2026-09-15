@@ -1,0 +1,11 @@
+node_modules
+dist
+workspace
+.env
+.env.*
+!.env.example
+.git
+*.log
+assets/*.mp3
+assets/*.wav
+assets/*.m4a
