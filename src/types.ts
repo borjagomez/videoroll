@@ -255,6 +255,28 @@ export const TimelineEntrySchema = z.object({
 });
 export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 
+/**
+ * Where each recorded step sits in a one-pass session recording.
+ *
+ * Persisted because the raw footage is expensive to obtain - it costs a live
+ * scouting run - and re-cutting it for a pacing change should not require
+ * driving the product again.
+ */
+export const SessionCutSchema = z.object({
+  slug: z.string(),
+  sourceVideo: z.string(),
+  introMs: z.number().nonnegative(),
+  recordedAt: z.string(),
+  segments: z.array(
+    z.object({
+      stepId: z.number().int().positive(),
+      startMs: z.number().nonnegative(),
+      endMs: z.number().nonnegative(),
+    }),
+  ),
+});
+export type SessionCut = z.infer<typeof SessionCutSchema>;
+
 export const TimelineSchema = z.object({
   slug: z.string(),
   videoFile: z.string(),

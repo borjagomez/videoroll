@@ -78,6 +78,10 @@ program
   .option("--burn-subs", "also render a copy with subtitles burned in")
   .option("--headed", "show the browser while scouting and recording")
   .option("--raw-narration", "skip the narration polish pass (no model call)")
+  .option(
+    "--one-pass",
+    "scout and film in a single run, for features that cannot be replayed (no verification)",
+  )
   .option("--dry-run", "match the feature and print the storyboard, then stop")
   .option("--crf <n>", "x264 quality, lower is better (default 18)", Number)
   .action(async (request: string, opts) => {

@@ -41,10 +41,13 @@ export const config = {
     password: process.env.VDG_DEMO_PASSWORD ?? "",
   },
   brand: {
-    /** Logo shown on the opening card. Relative paths resolve from the repo root. */
-    logoPath: process.env.VDG_BRAND_LOGO ?? "assets/factorial-logo.png",
-    /** Line under the title; empty string hides it. */
-    tagline: process.env.VDG_BRAND_TAGLINE ?? "",
+    /** Full-bleed cover art for the opening. Relative paths resolve from the repo root. */
+    coverPath: process.env.VDG_BRAND_COVER ?? "assets/factorial-cover.png",
+    /**
+     * Painted from the very first frame, before anything else renders, so the
+     * video never opens on white. Should match the cover art's background.
+     */
+    color: process.env.VDG_BRAND_COLOR ?? "#ff345f",
   },
   video: {
     width: Number(process.env.VDG_VIDEO_WIDTH ?? 1920),

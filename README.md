@@ -73,6 +73,7 @@ pnpm vdg doctor         # tells you exactly what is still missing
 | `ELEVENLABS_API_KEY` | voiceover (or set `VDG_TTS_PROVIDER=openai` / `say`, or use `--no-voice`) |
 | `VDG_DEMO_USERNAME` / `VDG_DEMO_PASSWORD` | `connect` without `--manual` |
 | `VDG_LANGUAGE` | language the narration is written in (default `English`) |
+| `VDG_BRAND_COVER` / `VDG_BRAND_COLOR` | opening cover art, and the colour painted from frame one |
 
 The narration language is independent of the product's own language. A demo
 tenant rendered in Spanish still gets English narration by default, with UI
@@ -89,7 +90,7 @@ vdg features --product <slug> [--search "time off"] [--verbose]
 vdg connect <app-url> --product <slug> --profile <name> [--manual] [--deep]
 vdg record "<request>" --product <slug> --profile <name>
            [--feature <id>] [--steps <path>] [--no-voice] [--burn-subs]
-           [--raw-narration] [--headed] [--dry-run]
+           [--raw-narration] [--one-pass] [--headed] [--dry-run]
 vdg replay <slug> [--verify] [--revoice] [--no-voice] [--burn-subs] [--headed]
 ```
 
@@ -120,6 +121,14 @@ Notes on a few of these:
 - `replay <slug> --verify` re-runs a recorded script against the live product
   without recording. This is the regression check: it tells you when the product
   has drifted away from a demo you already shipped.
+- `--one-pass` scouts and films in a single execution, for features that cannot
+  survive being run three times. The default route runs the demo three times -
+  scout, verify, film - which is fine for reading and for idempotent changes, but
+  a demo that books a date, consumes a queue position or versions a policy makes
+  the next run different from the last. One-pass films the scouting session and
+  cuts it down to the recorded steps afterwards, dropping the exploration. The
+  trade is explicit: there is no verification replay, because for these features
+  that proof is unobtainable. Cut points are kept in `session-cut.json`.
 - `steps.json` is meant to be edited. Change a narration line, drop a step,
   reorder something, then `vdg replay <slug> --revoice`.
 

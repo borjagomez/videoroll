@@ -4,8 +4,23 @@ import type { Page } from "playwright";
 import { captureSnapshot, deriveLocator, refSelector, type Snapshot } from "./snapshot.js";
 import { describe } from "./locator.js";
 import { settle } from "../browser.js";
+import { moveCursor, rippleAt, highlight } from "../record/cursor.js";
 import type { Step, StepAction } from "../types.js";
 import { log, dim } from "../log.js";
+
+/** The slice of recording that shows one step, relative to the video's start. */
+export interface StepSegment {
+  stepId: number;
+  startMs: number;
+  endMs: number;
+}
+
+export interface ScoutSessionOptions {
+  /** Animate the pointer and mark each segment - for a one-pass recording. */
+  cinematic?: boolean;
+  /** Wall-clock instant the video began, so segments can be expressed against it. */
+  videoOrigin?: number;
+}
 
 /**
  * Holds everything one scouting run mutates: the live page, the latest
@@ -19,16 +34,57 @@ import { log, dim } from "../log.js";
 export class ScoutSession {
   readonly steps: Step[] = [];
   readonly divergences: string[] = [];
+  /**
+   * When to cut. In a one-pass recording the camera runs through the whole
+   * session, exploration included; these windows are the only parts that
+   * belong in the finished video.
+   */
+  readonly segments: StepSegment[] = [];
   finished = false;
   summary = "";
 
   private snapshot: Snapshot | null = null;
   private nextId = 1;
+  private actionStartedAt = 0;
 
   constructor(
     private readonly page: Page,
     readonly startUrl: string,
+    private readonly options: ScoutSessionOptions = {},
   ) {}
+
+  private get cinematic(): boolean {
+    return this.options.cinematic === true;
+  }
+
+  /** Marks the instant a tool began acting, so its segment starts there. */
+  private beginAction(): void {
+    this.actionStartedAt = Date.now();
+  }
+
+  /**
+   * Move the drawn pointer onto the target before acting, exactly as the
+   * deterministic recorder does, so a one-pass take looks like a replayed one.
+   */
+  private async approach(ref: string): Promise<void> {
+    if (!this.cinematic) return;
+    const box = await this.page
+      .locator(refSelector(ref))
+      .boundingBox({ timeout: 6_000 })
+      .catch(() => null);
+    if (!box) return;
+    await highlight(this.page, box);
+    await moveCursor(
+      this.page,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+      380,
+    );
+    await this.page.waitForTimeout(90);
+  }
+
+  private async afterAction(): Promise<void> {
+    if (this.cinematic) await highlight(this.page, null);
+  }
 
   /**
    * Adopt steps that already replay cleanly, for a repair round.
@@ -90,6 +146,14 @@ export class ScoutSession {
       ...(options.note ? { note: options.note } : {}),
     };
     this.steps.push(step);
+    if (this.options.videoOrigin !== undefined) {
+      const origin = this.options.videoOrigin;
+      this.segments.push({
+        stepId: step.id,
+        startMs: Math.max(0, (this.actionStartedAt || Date.now()) - origin),
+        endMs: Date.now() - origin,
+      });
+    }
     log.detail(
       dim(
         `  step ${step.id}: ${action}` +
@@ -102,6 +166,12 @@ export class ScoutSession {
   /** Shared tail on every action result so the model always sees the outcome. */
   private async outcome(what: string, recorded: boolean): Promise<string> {
     const snapshot = await this.refresh();
+    // The screen has now settled, so the shot for the step just recorded runs
+    // to here - not to the instant the click returned.
+    const last = this.segments.at(-1);
+    if (recorded && last && this.options.videoOrigin !== undefined) {
+      last.endMs = Date.now() - this.options.videoOrigin;
+    }
     const tag = recorded ? "recorded" : "not recorded (exploring)";
     return `${what} — ${tag}.\n\n${snapshot}`;
   }
@@ -164,6 +234,7 @@ export class ScoutSession {
           caption: CAPTION,
         }),
         run: async ({ url, record, narration, caption }) => {
+          this.beginAction();
           await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
           if (record) this.record("navigate", { url, narration, caption });
           return this.outcome(`Navigated to ${url}`, record);
@@ -183,7 +254,11 @@ export class ScoutSession {
         }),
         run: async ({ ref, record, narration, caption }) => {
           const element = this.element(ref);
+          this.beginAction();
+          await this.approach(ref);
+          if (this.cinematic) await rippleAt(this.page);
           await this.page.locator(refSelector(ref)).click({ timeout: 10_000 });
+          await this.afterAction();
           if (record) {
             this.record("click", {
               narration,
@@ -208,7 +283,18 @@ export class ScoutSession {
         }),
         run: async ({ ref, value, record, narration, caption }) => {
           const element = this.element(ref);
-          await this.page.locator(refSelector(ref)).fill(value, { timeout: 10_000 });
+          this.beginAction();
+          await this.approach(ref);
+          const field = this.page.locator(refSelector(ref));
+          if (this.cinematic) {
+            // Typed, not pasted - the same reading as the deterministic recorder.
+            await field.click({ timeout: 10_000 });
+            await field.fill("");
+            await field.pressSequentially(value, { delay: 45 });
+          } else {
+            await field.fill(value, { timeout: 10_000 });
+          }
+          await this.afterAction();
           if (record) {
             this.record("fill", {
               narration,
@@ -233,9 +319,12 @@ export class ScoutSession {
         }),
         run: async ({ ref, value, record, narration, caption }) => {
           const element = this.element(ref);
+          this.beginAction();
+          await this.approach(ref);
           await this.page
             .locator(refSelector(ref))
             .selectOption({ label: value }, { timeout: 10_000 });
+          await this.afterAction();
           if (record) {
             this.record("select", {
               narration,
@@ -261,6 +350,8 @@ export class ScoutSession {
         }),
         run: async ({ key, ref, record, narration, caption }) => {
           const element = ref ? this.element(ref) : null;
+          this.beginAction();
+          if (ref) await this.approach(ref);
           if (ref) await this.page.locator(refSelector(ref)).press(key, { timeout: 10_000 });
           else await this.page.keyboard.press(key);
           if (record) {
@@ -287,6 +378,7 @@ export class ScoutSession {
           caption: CAPTION,
         }),
         run: async ({ text, record, narration, caption }) => {
+          this.beginAction();
           try {
             await this.page.getByText(text).first().waitFor({ timeout: 10_000 });
           } catch {

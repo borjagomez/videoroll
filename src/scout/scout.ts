@@ -10,7 +10,7 @@ import { describe } from "./locator.js";
 import type { AppMap, DemoScript, Step, Storyboard } from "../types.js";
 import { log, dim, fmtCount } from "../log.js";
 
-const SCOUT_INSTRUCTIONS = `You are scouting a live product so a demo video can be recorded of it.
+export const SCOUT_INSTRUCTIONS = `You are scouting a live product so a demo video can be recorded of it.
 
 You have a storyboard drafted from the product's documentation, a map of its
 navigation, and a real browser session already signed in to a demo environment.
@@ -45,7 +45,7 @@ Constraints:
 - Never record an exploratory detour, a wrong turn, or a step that only undoes
   another. The recording must read as one confident pass.`;
 
-function renderStoryboard(storyboard: Storyboard): string {
+export function renderStoryboard(storyboard: Storyboard): string {
   return [
     `feature: ${storyboard.featureName}`,
     `request: ${storyboard.request}`,
@@ -62,7 +62,7 @@ function renderStoryboard(storyboard: Storyboard): string {
     .join("\n");
 }
 
-function renderAppMap(appMap: AppMap): string {
+export function renderAppMap(appMap: AppMap): string {
   return [
     `app base url: ${appMap.baseUrl}`,
     "navigation:",

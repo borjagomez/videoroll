@@ -78,10 +78,7 @@ export async function capture(options: CaptureOptions): Promise<CaptureResult> {
       recordVideo: { dir: videoDir, size },
     });
     await installCursor(context);
-    await installTitleCard(context, {
-      title: script.featureName,
-      subtitle: config.brand.tagline,
-    });
+    await installTitleCard(context, { title: script.featureName });
 
     // Recording starts with the page, so this is the video's time origin.
     const origin = Date.now();

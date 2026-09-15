@@ -47,6 +47,8 @@ export const storyboardPath = (slug: string) =>
 export const stepsPath = (slug: string) => path.join(demoDir(slug), "steps.json");
 export const narrationPath = (slug: string) =>
   path.join(demoDir(slug), "narration.json");
+export const sessionCutPath = (slug: string) =>
+  path.join(demoDir(slug), "session-cut.json");
 export const timelinePath = (slug: string) =>
   path.join(demoDir(slug), "timeline.json");
 export const audioDir = (slug: string) => path.join(demoDir(slug), "audio");
