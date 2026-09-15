@@ -132,6 +132,31 @@ Notes on a few of these:
 - `steps.json` is meant to be edited. Change a narration line, drop a step,
   reorder something, then `vdg replay <slug> --revoice`.
 
+## Music
+
+Drop a track at `assets/music.mp3` and it is used automatically; no
+configuration needed. Audio files under `assets/` are gitignored, because a
+music bed is licensed separately from the code.
+
+The bed is not simply set quiet. A fixed low level cannot work — what is
+unobtrusive under speech is inaudible in the gaps, and what is audible in the
+gaps fights the voice. Instead the narration is the **sidechain key** of a
+compressor on the music, so the bed drops whenever someone is talking and
+returns between lines. Measured on a real demo: the cover and the gaps went
+from silence to about −27 dB, while under the voice the music adds 0.3–0.5 dB
+to the mix.
+
+The track is loudness-normalised before ducking, so a quiet ambient piece and
+a mastered pop track both sit in the same place. It loops, so a short loop is
+fine.
+
+| Variable | |
+|---|---|
+| `VDG_MUSIC` | path to the track; `""` disables music even if the default file exists |
+| `VDG_MUSIC_LUFS` | bed loudness before ducking (default `-26`; `-30` quieter, `-22` louder) |
+| `VDG_MUSIC_DUCK` | how hard the voice pushes the music down (default `12`) |
+| `VDG_MUSIC_FADE` | seconds of fade at each end (default `1.5`) |
+
 ## Subtitles
 
 Every video carries a soft `mov_text` subtitle track players can toggle, plus

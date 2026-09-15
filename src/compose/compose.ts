@@ -4,7 +4,7 @@ import { execa } from "execa";
 import { config } from "../config.js";
 import { ffmpeg, hasFilter } from "./ffmpeg.js";
 import { buildCues, toSrt, toVtt } from "../subs/srt.js";
-import { outDir, demoDir, ensureDir, rel } from "../paths.js";
+import { outDir, demoDir, ensureDir, rel, projectRoot } from "../paths.js";
 import type { DemoScript, Narration, Timeline } from "../types.js";
 import { log, dim, fmtDuration } from "../log.js";
 
@@ -38,6 +38,67 @@ const SUBTITLE_STYLE = [
   "MarginV=44",
   "Alignment=2",
 ].join("\\,");
+
+/**
+ * Resolve the configured music file, if there is one.
+ */
+function musicFile(): string | null {
+  const configured = config.music.path;
+  if (!configured) return null;
+  const file = path.isAbsolute(configured)
+    ? configured
+    : path.join(projectRoot, configured);
+  if (!fs.existsSync(file)) {
+    // Silent when it is merely the conventional path with nothing dropped in;
+    // worth saying when someone asked for a specific file that is not there.
+    if (config.music.explicit) {
+      log.warn(`Music file not found, continuing without it: ${rel(file)}`);
+    }
+    return null;
+  }
+  return file;
+}
+
+/**
+ * Mix a bed of music under the narration, ducked by the voice itself.
+ *
+ * A fixed quiet level does not work: what is unobtrusive under speech is
+ * inaudible in the gaps, and what is audible in the gaps fights the voice. So
+ * the narration is used as the sidechain key of a compressor on the music -
+ * the bed drops whenever someone is talking and comes back up between lines,
+ * which is how this is done for broadcast.
+ *
+ * The voice is split because it is needed twice: once as the key, once in the
+ * final mix.
+ */
+function musicFilter(
+  voiceLabel: string,
+  musicInput: number,
+  totalMs: number,
+): { filter: string; label: string } {
+  const seconds = (totalMs / 1000).toFixed(3);
+  const fade = Math.max(0, config.music.fadeSec);
+  const fadeOutAt = Math.max(0, totalMs / 1000 - fade).toFixed(3);
+
+  return {
+    filter:
+      // The key has to be a separate copy of the voice, not the mix itself.
+      `${voiceLabel}asplit=2[vkey][vmix];` +
+      `[${musicInput}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
+      `atrim=0:${seconds},asetpts=PTS-STARTPTS,` +
+      // Normalise before ducking so the bed sits identically whatever the
+      // source file's mastering happened to be.
+      `loudnorm=I=${config.music.lufs}:TP=-6:LRA=11,` +
+      `aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
+      `afade=t=in:st=0:d=${fade},afade=t=out:st=${fadeOutAt}:d=${fade}[bed];` +
+      // attack short enough to catch the start of a word, release slow enough
+      // that the bed does not pump between them.
+      `[bed][vkey]sidechaincompress=threshold=0.02:ratio=${config.music.duckRatio}:` +
+      `attack=20:release=420:makeup=1[ducked];` +
+      `[ducked][vmix]amix=inputs=2:normalize=0:dropout_transition=0[amixed]`,
+    label: "[amixed]",
+  };
+}
 
 /**
  * Lays each narration clip at the offset the recorder measured for its step.
@@ -112,19 +173,32 @@ export async function compose(options: ComposeOptions): Promise<ComposeResult> {
   // narration clip, then the subtitle file last.
   const args: string[] = ["-i", options.videoPath];
   if (audio) args.push(...audio.inputs);
-  const subtitleInput = 1 + (audio ? audio.inputs.length / 2 : 0);
+
+  // Music loops to cover the whole video; the trim in the filter sets the end.
+  const music = audio ? musicFile() : null;
+  let musicInput = -1;
+  if (music) {
+    musicInput = 1 + audio!.inputs.length / 2;
+    args.push("-stream_loop", "-1", "-i", music);
+  }
+  const subtitleInput =
+    1 + (audio ? audio.inputs.length / 2 : 0) + (music ? 1 : 0);
   args.push("-i", srt);
   // Excise the dead middle of the cover, keeping its opening - the title's
   // entrance lives there - and rejoining at the moment step 1 begins. Seeking
   // past it instead would drop the animation entirely.
   const video = trimFilter(timeline);
-  const graph = [video?.filter, audio?.filter].filter(Boolean).join(";");
+  const bed =
+    audio && music ? musicFilter(audio.label, musicInput, timeline.totalMs) : null;
+  const graph = [video?.filter, audio?.filter, bed?.filter]
+    .filter(Boolean)
+    .join(";");
   if (graph) args.push("-filter_complex", graph);
 
   args.push(
     "-map",
     video ? video.label : "0:v:0",
-    ...(audio ? ["-map", audio.label] : []),
+    ...(audio ? ["-map", bed ? bed.label : audio.label] : []),
     // A soft track every player can toggle. Burning in is a separate, optional
     // pass; this one always ships with the file.
     "-map",
@@ -150,6 +224,9 @@ export async function compose(options: ComposeOptions): Promise<ComposeResult> {
   if (audio) args.push("-c:a", "aac", "-b:a", "160k");
   args.push(mp4);
 
+  if (bed) {
+    log.detail(dim(`  music bed from ${rel(music!)}, ducked under the narration`));
+  }
   log.step("Encoding the video");
   await ffmpeg(args, "muxing");
 

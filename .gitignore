@@ -9,3 +9,9 @@ workspace/
 
 # stray screenshot output
 undefined/
+
+# Music beds are licensed separately - keep them out of the repo
+assets/music.*
+assets/*.mp3
+assets/*.wav
+assets/*.m4a

@@ -53,6 +53,31 @@ export const config = {
     /** How long the title takes to rise into place. */
     titleRiseMs: Number(process.env.VDG_TITLE_RISE_MS ?? 1_320),
   },
+  music: {
+    /**
+     * Background track. Drop a file at the default path and it is picked up
+     * with no configuration; set VDG_MUSIC to point elsewhere, or to "" to
+     * disable music even when that file exists.
+     */
+    path: process.env.VDG_MUSIC ?? "assets/music.mp3",
+    /** True when the path came from the environment rather than the default. */
+    explicit: process.env.VDG_MUSIC !== undefined,
+    /**
+     * Target loudness for the bed, in LUFS, before ducking.
+     *
+     * Normalising rather than applying a fixed gain means any track behaves
+     * the same: a quiet ambient piece and a mastered pop track both land here.
+     * Narration sits around -16 LUFS, so this is roughly 10 dB below the voice.
+     */
+    lufs: Number(process.env.VDG_MUSIC_LUFS ?? -26),
+    /**
+     * How hard the voice pushes the music down. The ratio of a sidechain
+     * compressor keyed off the narration: higher ducks harder.
+     */
+    duckRatio: Number(process.env.VDG_MUSIC_DUCK ?? 12),
+    /** Seconds of fade at each end. */
+    fadeSec: Number(process.env.VDG_MUSIC_FADE ?? 1.5),
+  },
   video: {
     width: Number(process.env.VDG_VIDEO_WIDTH ?? 1920),
     height: Number(process.env.VDG_VIDEO_HEIGHT ?? 1080),
