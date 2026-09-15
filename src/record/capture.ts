@@ -3,18 +3,35 @@ import path from "node:path";
 import { config } from "../config.js";
 import { launch, newContext } from "../browser.js";
 import { installCursor } from "./cursor.js";
+import { installTitleCard, hideTitleCard } from "./titlecard.js";
 import { replay } from "./replay.js";
 import { storageStatePath, rawVideoDir, ensureDir, rel } from "../paths.js";
 import { probeVideo } from "../compose/ffmpeg.js";
 import type { DemoScript, Narration, Timeline } from "../types.js";
 import { log, dim, fmtDuration } from "../log.js";
 
-/** Still frames before the first action, so the video does not open mid-move. */
-const LEAD_IN_MS = 1_200;
+/**
+ * Still frames before navigation begins. Short, because the title card already
+ * covers the opening - every millisecond here delays the app's boot behind it,
+ * and the boot is what sets the intro's length.
+ */
+const LEAD_IN_MS = Number(process.env.VDG_LEAD_IN_MS ?? 250);
 /** Hold on the final state so the outcome is readable before the cut. */
-const TAIL_MS = 1_800;
-/** Breathing room added to every step on top of its narration. */
-const STEP_PADDING_MS = 450;
+const TAIL_MS = Number(process.env.VDG_TAIL_MS ?? 1_200);
+/**
+ * Breathing room past the end of each narration line. Small on purpose: this
+ * is the gap between one line finishing and the next beginning, and anything
+ * much larger reads as hesitation rather than pacing.
+ */
+const STEP_PADDING_MS = Number(process.env.VDG_STEP_PADDING_MS ?? 250);
+/**
+ * Minimum length of the opening card, measured from the first frame.
+ *
+ * The app boots behind the card, so the real intro lasts whichever is longer:
+ * this, or however long the first screen took to draw. Holding this *on top of*
+ * the boot instead produced an eighteen-second title on a fifty-second video.
+ */
+const TITLE_MIN_MS = Number(process.env.VDG_TITLE_MS ?? 3_000);
 
 export interface CaptureOptions {
   script: DemoScript;
@@ -61,6 +78,10 @@ export async function capture(options: CaptureOptions): Promise<CaptureResult> {
       recordVideo: { dir: videoDir, size },
     });
     await installCursor(context);
+    await installTitleCard(context, {
+      title: script.featureName,
+      subtitle: config.brand.tagline,
+    });
 
     // Recording starts with the page, so this is the video's time origin.
     const origin = Date.now();
@@ -74,6 +95,14 @@ export async function capture(options: CaptureOptions): Promise<CaptureResult> {
       startUrl: script.startUrl,
       cinematic: true,
       startedAt: origin,
+      // The card covers the app's boot; hold it a beat once the screen behind
+      // it is ready, then fade. Step 1 begins on a drawn page, not a blank one.
+      beforeFirstStep: async (page) => {
+        const remaining = TITLE_MIN_MS - (Date.now() - origin);
+        if (remaining > 0) await page.waitForTimeout(remaining);
+        await hideTitleCard(page);
+      },
+      // Total time the step stays on screen, from its own start.
       holdMsFor: (step) => (byStep.get(step.id) ?? 2_000) + STEP_PADDING_MS,
       onStep: (step, index) => {
         if (index === 0) leadInMs = Date.now() - origin;

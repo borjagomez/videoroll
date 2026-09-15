@@ -49,7 +49,11 @@ export class ElevenLabsProvider implements TtsProvider {
       body: JSON.stringify({
         text,
         model_id: config.tts.elevenLabsModel,
-        voice_settings: { stability: 0.45, similarity_boost: 0.75, speed: 1.0 },
+        voice_settings: {
+          stability: 0.45,
+          similarity_boost: 0.75,
+          speed: config.tts.elevenLabsSpeed,
+        },
       }),
       signal: AbortSignal.timeout(120_000),
     });

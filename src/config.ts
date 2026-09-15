@@ -26,8 +26,11 @@ export const config = {
   tts: {
     provider: (process.env.VDG_TTS_PROVIDER ?? "elevenlabs") as TtsProviderName,
     elevenLabsKey: process.env.ELEVENLABS_API_KEY ?? "",
-    // "Rachel" - a stable default so demos sound consistent across machines.
-    elevenLabsVoice: process.env.ELEVENLABS_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM",
+    // "Matilda" - warm and conversational, which suits a colleague walking you
+    // through a product. Pinned by id so demos sound the same on any machine.
+    elevenLabsVoice: process.env.ELEVENLABS_VOICE_ID ?? "XrExE9yKIg1WjnnlVkGX",
+    /** Delivery rate. Above ~1.15 diction suffers on UI labels and names. */
+    elevenLabsSpeed: Number(process.env.VDG_TTS_SPEED ?? 1.08),
     elevenLabsModel: process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5",
     openAiKey: process.env.OPENAI_API_KEY ?? "",
     openAiModel: process.env.OPENAI_TTS_MODEL ?? "gpt-4o-mini-tts",
@@ -36,6 +39,12 @@ export const config = {
   demo: {
     username: process.env.VDG_DEMO_USERNAME ?? "",
     password: process.env.VDG_DEMO_PASSWORD ?? "",
+  },
+  brand: {
+    /** Logo shown on the opening card. Relative paths resolve from the repo root. */
+    logoPath: process.env.VDG_BRAND_LOGO ?? "assets/factorial-logo.png",
+    /** Line under the title; empty string hides it. */
+    tagline: process.env.VDG_BRAND_TAGLINE ?? "",
   },
   video: {
     width: Number(process.env.VDG_VIDEO_WIDTH ?? 1920),

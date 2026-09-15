@@ -2,6 +2,7 @@ import type { Page } from "playwright";
 import { resolve, describe } from "../scout/locator.js";
 import { moveCursor, rippleAt, highlight, ensureCursor, placeCursor } from "./cursor.js";
 import type { Step } from "../types.js";
+import { waitForContent } from "../browser.js";
 import { log, dim } from "../log.js";
 
 /** A step that did not do what it said, but must not stop the run. */
@@ -28,15 +29,17 @@ export interface ReplayOptions {
   startUrl: string;
   /** Draw the synthetic cursor and highlights. Off for plain verification. */
   cinematic?: boolean;
-  /** How long to hold on each step once its action is done. */
+  /** Total on-screen duration for a step, measured from when it starts. */
   holdMsFor?: (step: Step, index: number) => number;
   /** Called with the offset, in ms from replay start, at which each step begins. */
   onStep?: (step: Step, index: number, startMs: number) => void;
   /** Wall-clock origin for reported timings; defaults to replay start. */
   startedAt?: number;
+  /** Runs once the start screen has rendered, before step 1 is timed. */
+  beforeFirstStep?: (page: Page) => Promise<void>;
 }
 
-const CURSOR_TRAVEL_MS = 520;
+const CURSOR_TRAVEL_MS = Number(process.env.VDG_CURSOR_TRAVEL_MS ?? 380);
 
 /**
  * Where on an element the pointer should land.
@@ -96,7 +99,7 @@ async function runStep(page: Page, step: Step, cinematic: boolean): Promise<void
     if (target) {
       if (step.highlight) await highlight(page, target.rect);
       await moveCursor(page, target.point, CURSOR_TRAVEL_MS);
-      await page.waitForTimeout(140);
+      await page.waitForTimeout(90);
     }
   }
 
@@ -150,12 +153,23 @@ export async function replay(options: ReplayOptions): Promise<ReplayResult> {
   await page.goto(options.startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
   if (cinematic) {
     await ensureCursor(page);
+    // Do not start filming over a blank app - narration is laid down from each
+    // step's start, so a step beginning before the screen exists talks over
+    // nothing. Full stability is not needed here, only that something is drawn.
+    await waitForContent(page);
+  }
+  // Anything covering the opening frames (a title card) is dismissed here.
+  await options.beforeFirstStep?.(page);
+  if (cinematic) {
+    // Only now bring the pointer on screen. Placing it earlier drew a cursor
+    // on top of the title card, which reads as a stray artefact.
     await placeCursor(page, { x: 140, y: 140 });
   }
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(250);
 
   for (const [index, step] of steps.entries()) {
-    const startMs = Date.now() - origin;
+    const stepStartedAt = Date.now();
+    const startMs = stepStartedAt - origin;
     options.onStep?.(step, index, startMs);
 
     try {
@@ -178,8 +192,14 @@ export async function replay(options: ReplayOptions): Promise<ReplayResult> {
     }
 
     await page.waitForTimeout(step.settleMs);
-    const hold = options.holdMsFor?.(step, index) ?? 0;
-    const remaining = hold - step.settleMs;
+
+    // `holdMsFor` is the step's total on-screen duration, measured from when
+    // the step began - not extra time tacked on after the action. The narration
+    // clip is laid down at the step's start, so appending its full length after
+    // the click counted it twice and left the camera sitting in silence for as
+    // long as the action had taken. Subtract what has already elapsed.
+    const target = options.holdMsFor?.(step, index) ?? 0;
+    const remaining = target - (Date.now() - stepStartedAt);
     if (remaining > 0) await page.waitForTimeout(remaining);
 
     timings.push({ stepId: step.id, startMs, endMs: Date.now() - origin });

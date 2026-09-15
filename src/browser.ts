@@ -87,3 +87,25 @@ export async function settle(
     await page.waitForTimeout(500);
   }
 }
+
+/**
+ * Wait only until the app has drawn *something*.
+ *
+ * Weaker than `settle`, and deliberately so. Before the first filmed step we
+ * need the screen not to be blank; we do not need it to have stopped changing.
+ * Waiting for full stability costs about ten seconds on a heavy screen, which
+ * is fine for reading a page but absurd as an intro length.
+ */
+export async function waitForContent(page: Page, timeoutMs = 15_000): Promise<void> {
+  await page
+    .waitForFunction(
+      () => {
+        const main = document.querySelector("main");
+        const text = ((main ?? document.body)?.innerText ?? "").trim();
+        return text.length > 60;
+      },
+      undefined,
+      { timeout: timeoutMs, polling: 250 },
+    )
+    .catch(() => undefined);
+}
