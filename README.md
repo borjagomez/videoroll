@@ -134,9 +134,15 @@ Notes on a few of these:
 
 ## Music
 
-Drop a track at `assets/music.mp3` and it is used automatically; no
-configuration needed. Audio files under `assets/` are gitignored, because a
-music bed is licensed separately from the code.
+Drop a track at `workspace/music.mp3` or `assets/music.mp3` and it is used
+automatically; no configuration needed. Both locations are gitignored, and
+`assets/*.mp3` is excluded from the Docker image too, because a music bed is
+licensed separately from the code.
+
+That exclusion is why the workspace comes first. `workspace/` is the mounted
+volume, so a track placed there reaches the container without being baked into
+an image that may be published. A container with no bed renders demos silently
+unscored, so `/health` reports which file it found, if any.
 
 The bed is not simply set quiet. A fixed low level cannot work — what is
 unobtrusive under speech is inaudible in the gaps, and what is audible in the

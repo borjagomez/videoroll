@@ -7,6 +7,7 @@ import { listDemos, getDemo, resolveAsset } from "./library.js";
 import { jobs } from "./jobs.js";
 import { chat, type ChatMessage } from "./chat.js";
 import { assertReady } from "../pipeline.js";
+import { musicFile } from "../compose/compose.js";
 import { log } from "../log.js";
 
 const MIME: Record<string, string> = {
@@ -105,11 +106,15 @@ export function buildServer(): FastifyInstance {
     } catch (error) {
       problems.push((error as Error).message);
     }
+    // Report the music bed explicitly: a missing track renders silently
+    // unscored, which is easy to ship without noticing.
+    const music = musicFile();
     return {
       ok: problems.length === 0,
       product: config.server.product,
       profile: config.server.profile,
       demos: listDemos().length,
+      music: music ? { enabled: true, path: music } : { enabled: false },
       problems,
     };
   });

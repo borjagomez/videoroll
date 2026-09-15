@@ -6,9 +6,26 @@ export async function ffmpeg(args: string[], label: string): Promise<void> {
   try {
     await execa(config.ffmpegBin, ["-hide_banner", "-loglevel", "error", "-y", ...args]);
   } catch (error) {
-    const err = error as { stderr?: string; message: string };
-    const detail = (err.stderr ?? err.message).trim().split("\n").slice(-6).join("\n  ");
-    throw new Error(`ffmpeg failed during ${label}:\n  ${detail}`);
+    const err = error as {
+      stderr?: string;
+      message: string;
+      exitCode?: number;
+      signal?: string;
+    };
+    // `??` let an empty stderr through as the message, which reported a bare
+    // "ffmpeg failed during recut:" and hid the actual cause - in one case the
+    // kernel OOM-killing the process, which says nothing on stderr at all.
+    const detail = (err.stderr || err.message || "").trim().split("\n").slice(-6).join("\n  ");
+    const killed =
+      err.signal === "SIGKILL" || /killed/i.test(err.message ?? "")
+        ? "\n  It was killed - almost certainly out of memory. " +
+          "Check the container's memory limit."
+        : "";
+    throw new Error(
+      `ffmpeg failed during ${label}` +
+        (err.exitCode !== undefined ? ` (exit ${err.exitCode})` : "") +
+        `:\n  ${detail || "(no output)"}${killed}`,
+    );
   }
 }
 

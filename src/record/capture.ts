@@ -117,13 +117,21 @@ export async function capture(options: CaptureOptions): Promise<CaptureResult> {
       // times out - so check before blaming the product for changing.
       const url = page.url();
       const expired = /\/(login|signin|sign_in|auth)\b/i.test(url);
+      // This script verified against the live product minutes ago, so the
+      // product changing under us is the least likely explanation. Far more
+      // often the demo simply is not replayable: a third execution finds
+      // nothing left to do, because the dates are booked, the request has been
+      // approved, or - the subtle one - a form only offers Save once a value
+      // actually changes, and the value is already what the script sets.
       throw new Error(
         `Recording stopped at step ${step.id} (${step.action}): ${message}\n` +
           (expired
             ? `  The session has expired - the browser is back at ${url}.\n` +
               `  Run \`vdg connect\` to sign in again, then retry.`
-            : `  The script replayed before, so the demo environment has probably ` +
-              `changed. Re-run \`vdg record\` to re-scout it.`),
+            : `  This script scouted and verified cleanly, so it is most likely ` +
+              `not replayable: filming is its third run, and by now there may be ` +
+              `nothing left to change.\n` +
+              `  Record it with --one-pass, which films a single live run instead.`),
       );
     }
 

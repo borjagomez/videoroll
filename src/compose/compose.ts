@@ -4,7 +4,7 @@ import { execa } from "execa";
 import { config } from "../config.js";
 import { ffmpeg, hasFilter } from "./ffmpeg.js";
 import { buildCues, toSrt, toVtt } from "../subs/srt.js";
-import { outDir, demoDir, ensureDir, rel, projectRoot } from "../paths.js";
+import { outDir, demoDir, ensureDir, rel, projectRoot, workspaceRoot } from "../paths.js";
 import type { DemoScript, Narration, Timeline } from "../types.js";
 import { log, dim, fmtDuration } from "../log.js";
 
@@ -42,21 +42,31 @@ const SUBTITLE_STYLE = [
 /**
  * Resolve the configured music file, if there is one.
  */
-function musicFile(): string | null {
+export function musicFile(): string | null {
   const configured = config.music.path;
-  if (!configured) return null;
-  const file = path.isAbsolute(configured)
-    ? configured
-    : path.join(projectRoot, configured);
-  if (!fs.existsSync(file)) {
-    // Silent when it is merely the conventional path with nothing dropped in;
-    // worth saying when someone asked for a specific file that is not there.
-    if (config.music.explicit) {
-      log.warn(`Music file not found, continuing without it: ${rel(file)}`);
-    }
+
+  // An explicit empty value means "no music", deliberately.
+  if (configured === "") return null;
+
+  if (configured) {
+    const file = path.isAbsolute(configured)
+      ? configured
+      : path.join(projectRoot, configured);
+    if (fs.existsSync(file)) return file;
+    log.warn(`Music file not found, continuing without it: ${rel(file)}`);
     return null;
   }
-  return file;
+
+  // The workspace comes first because it is the mounted volume in a container:
+  // a licensed track is data, not code, and is deliberately kept out of the
+  // image. Without this, a container silently renders every demo unscored.
+  for (const candidate of [
+    path.join(workspaceRoot(), "music.mp3"),
+    path.join(projectRoot, "assets", "music.mp3"),
+  ]) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
 /**

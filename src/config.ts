@@ -55,12 +55,11 @@ export const config = {
   },
   music: {
     /**
-     * Background track. Drop a file at the default path and it is picked up
-     * with no configuration; set VDG_MUSIC to point elsewhere, or to "" to
-     * disable music even when that file exists.
+     * Background track. Set VDG_MUSIC to point at one, or to "" to disable
+     * music; otherwise the conventional locations below are searched.
      */
-    path: process.env.VDG_MUSIC ?? "assets/music.mp3",
-    /** True when the path came from the environment rather than the default. */
+    path: process.env.VDG_MUSIC,
+    /** True when the path came from the environment rather than a default. */
     explicit: process.env.VDG_MUSIC !== undefined,
     /**
      * Target loudness for the bed, in LUFS, before ducking.
