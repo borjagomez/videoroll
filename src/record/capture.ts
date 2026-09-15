@@ -19,19 +19,23 @@ const LEAD_IN_MS = Number(process.env.VDG_LEAD_IN_MS ?? 250);
 /** Hold on the final state so the outcome is readable before the cut. */
 const TAIL_MS = Number(process.env.VDG_TAIL_MS ?? 1_200);
 /**
- * Breathing room past the end of each narration line. Small on purpose: this
- * is the gap between one line finishing and the next beginning, and anything
- * much larger reads as hesitation rather than pacing.
+ * Breathing room past the end of each narration line - the beat between one
+ * sentence landing and the next starting. Around half a second matches how
+ * people actually pause between sentences; much below that the delivery runs
+ * together, much above and it reads as hesitation.
  */
-const STEP_PADDING_MS = Number(process.env.VDG_STEP_PADDING_MS ?? 250);
+const STEP_PADDING_MS = Number(process.env.VDG_STEP_PADDING_MS ?? 550);
 /**
  * Minimum length of the opening card, measured from the first frame.
  *
  * The app boots behind the card, so the real intro lasts whichever is longer:
  * this, or however long the first screen took to draw. Holding this *on top of*
  * the boot instead produced an eighteen-second title on a fifty-second video.
+ *
+ * The floor has to outlast the title's entrance - delay plus rise, about 2.2s -
+ * with enough left over to actually read it.
  */
-const TITLE_MIN_MS = Number(process.env.VDG_TITLE_MS ?? 3_000);
+const TITLE_MIN_MS = Number(process.env.VDG_TITLE_MS ?? 4_200);
 
 export interface CaptureOptions {
   script: DemoScript;
@@ -109,10 +113,17 @@ export async function capture(options: CaptureOptions): Promise<CaptureResult> {
 
     if (!result.ok) {
       const { step, message } = result.failure!;
+      // A lapsed session looks exactly like a broken script - every locator
+      // times out - so check before blaming the product for changing.
+      const url = page.url();
+      const expired = /\/(login|signin|sign_in|auth)\b/i.test(url);
       throw new Error(
         `Recording stopped at step ${step.id} (${step.action}): ${message}\n` +
-          `  The script verified earlier, so the demo environment has probably ` +
-          `changed. Re-run \`vdg record\` to re-scout it.`,
+          (expired
+            ? `  The session has expired - the browser is back at ${url}.\n` +
+              `  Run \`vdg connect\` to sign in again, then retry.`
+            : `  The script replayed before, so the demo environment has probably ` +
+              `changed. Re-run \`vdg record\` to re-scout it.`),
       );
     }
 
@@ -131,20 +142,32 @@ export async function capture(options: CaptureOptions): Promise<CaptureResult> {
   const info = await probeVideo(videoPath);
   const offset = Number(process.env.VDG_AV_OFFSET_MS ?? 0);
 
+  // Keep only as much of the cover as the viewer needs; the rest was there to
+  // hide the app booting and is a still frame.
+  const trimStartMs = Math.max(0, leadInMs - TITLE_MIN_MS);
+  const shift = (ms: number) => Math.max(0, ms + offset - trimStartMs);
+
   const timeline: Timeline = {
     slug: script.slug,
     videoFile: path.relative(path.dirname(videoDir), videoPath),
     width: info.width || size.width,
     height: info.height || size.height,
-    leadInMs: Math.max(0, leadInMs + offset),
+    leadInMs: Math.max(0, Math.min(leadInMs, TITLE_MIN_MS) + offset),
+    trimStartMs,
     tailMs: TAIL_MS,
-    totalMs: info.durationMs,
+    totalMs: Math.max(0, info.durationMs - trimStartMs),
     entries: timings.map((t) => ({
       stepId: t.stepId,
-      startMs: Math.max(0, t.startMs + offset),
-      endMs: Math.max(0, t.endMs + offset),
+      startMs: shift(t.startMs),
+      endMs: shift(t.endMs),
     })),
   };
+
+  if (trimStartMs > 0) {
+    log.detail(
+      dim(`  trimming ${fmtDuration(trimStartMs)} of cover that only hid the app booting`),
+    );
+  }
 
   log.ok(
     `Captured ${fmtDuration(info.durationMs)} → ${rel(videoPath)} ` +

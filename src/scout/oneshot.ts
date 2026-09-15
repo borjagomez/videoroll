@@ -24,7 +24,7 @@ recording you are making now is the finished video.
   A recorded step is a shot in the final video.
 - Do not record an action you then undo. There is no way to remove it later.`;
 
-const INTRO_MS = Number(process.env.VDG_TITLE_MS ?? 3_000);
+const INTRO_MS = Number(process.env.VDG_TITLE_MS ?? 4_200);
 
 export interface OneShotOptions {
   storyboard: Storyboard;

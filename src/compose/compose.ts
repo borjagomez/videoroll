@@ -71,6 +71,27 @@ function audioFilter(
   return { inputs, filter: parts.join(";"), label: "[aout]" };
 }
 
+/**
+ * Drop the stretch of cover that existed only to hide the app booting.
+ *
+ * The cover has to span the app's start - ten seconds on a heavy product - but
+ * it is a still image once its title has landed, so most of that is dead
+ * weight. Keeping `[0, leadInMs]` preserves the entrance; resuming at
+ * `leadInMs + trimStartMs` picks the footage up exactly where step 1 begins.
+ */
+function trimFilter(timeline: Timeline): { filter: string; label: string } | null {
+  if (timeline.trimStartMs <= 0) return null;
+  const keep = (timeline.leadInMs / 1000).toFixed(3);
+  const resume = ((timeline.leadInMs + timeline.trimStartMs) / 1000).toFixed(3);
+  return {
+    filter:
+      `[0:v]trim=start=0:end=${keep},setpts=PTS-STARTPTS[vhead];` +
+      `[0:v]trim=start=${resume},setpts=PTS-STARTPTS[vbody];` +
+      `[vhead][vbody]concat=n=2:v=1:a=0[vout]`,
+    label: "[vout]",
+  };
+}
+
 export async function compose(options: ComposeOptions): Promise<ComposeResult> {
   const { script, narration, timeline } = options;
   const dir = ensureDir(outDir(script.slug));
@@ -93,11 +114,16 @@ export async function compose(options: ComposeOptions): Promise<ComposeResult> {
   if (audio) args.push(...audio.inputs);
   const subtitleInput = 1 + (audio ? audio.inputs.length / 2 : 0);
   args.push("-i", srt);
-  if (audio) args.push("-filter_complex", audio.filter);
+  // Excise the dead middle of the cover, keeping its opening - the title's
+  // entrance lives there - and rejoining at the moment step 1 begins. Seeking
+  // past it instead would drop the animation entirely.
+  const video = trimFilter(timeline);
+  const graph = [video?.filter, audio?.filter].filter(Boolean).join(";");
+  if (graph) args.push("-filter_complex", graph);
 
   args.push(
     "-map",
-    "0:v:0",
+    video ? video.label : "0:v:0",
     ...(audio ? ["-map", audio.label] : []),
     // A soft track every player can toggle. Burning in is a separate, optional
     // pass; this one always ships with the file.

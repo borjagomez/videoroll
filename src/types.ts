@@ -284,6 +284,15 @@ export const TimelineSchema = z.object({
   height: z.number().int().positive(),
   /** Frames recorded before step 1 begins - the one calibrated offset. */
   leadInMs: z.number().nonnegative(),
+  /**
+   * Head footage to drop when encoding.
+   *
+   * The opening cover must span the app's boot, which on a heavy product runs
+   * to ten seconds - but the cover is a still image once its title has landed,
+   * so showing all of it is dead weight. The recording covers the boot; the
+   * video shows only the first few seconds of it.
+   */
+  trimStartMs: z.number().nonnegative().default(0),
   tailMs: z.number().nonnegative(),
   totalMs: z.number().nonnegative(),
   entries: z.array(TimelineEntrySchema),

@@ -48,6 +48,10 @@ export const config = {
      * video never opens on white. Should match the cover art's background.
      */
     color: process.env.VDG_BRAND_COLOR ?? "#ff345f",
+    /** Beat on the bare cover before the title starts to rise. */
+    titleDelayMs: Number(process.env.VDG_TITLE_DELAY_MS ?? 880),
+    /** How long the title takes to rise into place. */
+    titleRiseMs: Number(process.env.VDG_TITLE_RISE_MS ?? 1_320),
   },
   video: {
     width: Number(process.env.VDG_VIDEO_WIDTH ?? 1920),

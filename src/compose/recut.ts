@@ -6,9 +6,9 @@ import type { Narration, Timeline } from "../types.js";
 import { log, dim, fmtDuration } from "../log.js";
 
 /** Gap left between shots, matching the deterministic recorder's pacing. */
-const SEGMENT_PADDING_MS = Number(process.env.VDG_STEP_PADDING_MS ?? 250);
-/** Opening card, taken from the head of the recording. */
-const INTRO_MS = Number(process.env.VDG_TITLE_MS ?? 3_000);
+const SEGMENT_PADDING_MS = Number(process.env.VDG_STEP_PADDING_MS ?? 550);
+/** How much of the opening cover to keep, taken from the head of the recording. */
+const INTRO_MS = Number(process.env.VDG_TITLE_MS ?? 4_200);
 
 export interface RecutOptions {
   slug: string;
@@ -50,7 +50,9 @@ export async function recut(options: RecutOptions): Promise<RecutResult> {
 
   const durationByStep = new Map(narration.steps.map((s) => [s.stepId, s.durationMs]));
   const source = await probeVideo(sourceVideo);
-  const introMs = Math.min(options.introMs ?? INTRO_MS, source.durationMs);
+  // The recorded cover may have spanned a ten-second boot; only the opening of
+  // it is worth keeping, since it is a still image after the title lands.
+  const introMs = Math.min(options.introMs ?? INTRO_MS, INTRO_MS, source.durationMs);
 
   const filters: string[] = [];
   const labels: string[] = [];
@@ -140,6 +142,8 @@ export async function recut(options: RecutOptions): Promise<RecutResult> {
       width: cut.width || source.width,
       height: cut.height || source.height,
       leadInMs: introMs,
+      // The cut already dropped the surplus; nothing more to trim at encode.
+      trimStartMs: 0,
       tailMs: 0,
       totalMs: cut.durationMs,
       entries,

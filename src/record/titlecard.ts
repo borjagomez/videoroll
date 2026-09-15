@@ -23,7 +23,13 @@ import { config } from "../config.js";
  * - If a document does swap mid-cover (a start URL that redirects), the rebuild
  *   renders instantly, with no second entrance animation.
  */
-const TITLE_SCRIPT = (title: string, cover: string, colour: string) => String.raw`
+const TITLE_SCRIPT = (
+  title: string,
+  cover: string,
+  colour: string,
+  delayMs: number,
+  riseMs: number,
+) => String.raw`
 (() => {
   var COLOUR = __VDG_COLOUR__;
 
@@ -73,8 +79,12 @@ const TITLE_SCRIPT = (title: string, cover: string, colour: string) => String.ra
       "#vdg-title .vdg-t{margin:15vh 0 0;color:#fff;font-size:38px;font-weight:600;",
       "letter-spacing:-.015em;line-height:1.25;text-align:center;max-width:70vw;",
       "text-shadow:0 1px 18px rgba(120,0,25,.18);",
-      "animation:vdg-up 820ms cubic-bezier(.16,.84,.3,1) 380ms both}",
-      "@keyframes vdg-up{from{opacity:0;transform:translateY(38px)}",
+      // Unhurried on purpose: the cover is the first thing a viewer sees, and
+      // a title that snaps into place reads as a UI element rather than a
+      // opening shot. Both halves are tunable - see config.brand.
+      "animation:vdg-up " + __VDG_RISE__ + "ms cubic-bezier(.16,.84,.26,1) ",
+      __VDG_DELAY__ + "ms both}",
+      "@keyframes vdg-up{from{opacity:0;transform:translateY(46px)}",
       "to{opacity:1;transform:none}}",
       // A rebuild on a second document must not replay the entrance.
       "#vdg-title.vdg-instant .vdg-t{animation:none}",
@@ -133,7 +143,9 @@ const TITLE_SCRIPT = (title: string, cover: string, colour: string) => String.ra
   // one first corrupted the longer.
   .replace(/__VDG_TITLE__/g, JSON.stringify(title))
   .replace(/__VDG_COVER__/g, JSON.stringify(cover))
-  .replace(/__VDG_COLOUR__/g, JSON.stringify(colour));
+  .replace(/__VDG_COLOUR__/g, JSON.stringify(colour))
+  .replace(/__VDG_DELAY__/g, String(Math.round(delayMs)))
+  .replace(/__VDG_RISE__/g, String(Math.round(riseMs)));
 
 /** The cover art as a data URI, so the page needs no network access. */
 function coverDataUri(): string {
@@ -163,7 +175,13 @@ export async function installTitleCard(
   card: TitleCard,
 ): Promise<void> {
   await context.addInitScript({
-    content: TITLE_SCRIPT(card.title, coverDataUri(), config.brand.color),
+    content: TITLE_SCRIPT(
+      card.title,
+      coverDataUri(),
+      config.brand.color,
+      config.brand.titleDelayMs,
+      config.brand.titleRiseMs,
+    ),
   });
 }
 
