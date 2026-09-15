@@ -13,18 +13,32 @@ import type { AppMap, DemoScript, Storyboard } from "../types.js";
 import { log, dim, fmtCount } from "../log.js";
 
 /** Extra guidance that only applies when the take is live. */
-const ONE_PASS_ADDENDUM = `
+const onePassAddendum = (budget: number) => `
 This session is being filmed. There is no second take and no replay: the
 recording you are making now is the finished video.
 
 - Everything you do is captured, but only the steps you record with
-  record:true are kept - the rest is cut out afterwards. Explore as freely as
-  you need to.
+  record:true are kept - the rest is cut out afterwards.
+- You have about ${budget} turns for the whole session, and exploring and
+  recording come out of the same budget. Look around by all means, but be
+  recording by roughly turn ${Math.floor(budget / 2)}. A session that maps the
+  feature perfectly and runs out before recording anything produces no video
+  at all, which is the one outcome worth avoiding.
+- If you are unsure whether you have seen enough, record. A short demo of the
+  part you understand beats nothing.
 - Once you start recording steps, perform them in order and without detours.
   A recorded step is a shot in the final video.
 - Do not record an action you then undo. There is no way to remove it later.`;
 
 const INTRO_MS = Number(process.env.VDG_TITLE_MS ?? 4_200);
+/**
+ * Turns a filmed session may take.
+ *
+ * Exploring and recording share this, and a configuration screen - policy
+ * editors especially - can spend fifty turns just reading what is there. Too
+ * low and the session ends with a perfect map of the feature and no video.
+ */
+const ONE_PASS_BUDGET = Number(process.env.VDG_SCOUT_TURNS ?? 90);
 
 export interface OneShotOptions {
   storyboard: Storyboard;
@@ -95,13 +109,15 @@ export async function scoutOneShot(options: OneShotOptions): Promise<OneShotResu
       videoOrigin,
     });
 
+    const budget = options.maxIterations ?? ONE_PASS_BUDGET;
+
     log.step("Scouting with the camera running");
     const runner = getClient().beta.messages.toolRunner({
       model: MODEL,
       max_tokens: 16000,
       system: buildSystem({
         cachedPrefix: [renderStoryboard(storyboard), renderAppMap(appMap)].join("\n\n"),
-        instructions: SCOUT_INSTRUCTIONS + ONE_PASS_ADDENDUM,
+        instructions: SCOUT_INSTRUCTIONS + onePassAddendum(budget),
         user: "",
       }),
       output_config: { effort: EFFORT },
@@ -113,23 +129,56 @@ export async function scoutOneShot(options: OneShotOptions): Promise<OneShotResu
             "Scout this feature and record the demo script. You are being filmed.",
         },
       ],
-      max_iterations: options.maxIterations ?? 50,
+      max_iterations: budget,
     });
 
-    for await (const message of runner) {
-      reportUsage("scout", message.usage);
-      for (const block of message.content) {
-        if (block.type === "text" && block.text.trim()) {
-          log.detail(dim(`  ${block.text.trim().split("\n")[0]}`));
+    let turns = 0;
+    let lastStop: string | null = null;
+    let toolCalls = 0;
+    try {
+      for await (const message of runner) {
+        turns += 1;
+        lastStop = message.stop_reason ?? null;
+        reportUsage("scout", message.usage);
+        for (const block of message.content) {
+          if (block.type === "text" && block.text.trim()) {
+            log.detail(dim(`  ${block.text.trim().split("\n")[0]}`));
+          }
+          if (block.type === "tool_use") {
+            toolCalls += 1;
+            if (process.env.VDG_TRACE) log.detail(dim(`    · ${block.name}`));
+          }
         }
+        if (session.finished) break;
       }
-      if (session.finished) break;
+    } catch (error) {
+      // The steps recorded so far are already on film, and the film is the
+      // expensive part. A model call that fails afterwards - an expired key, a
+      // spent credit balance, a dropped connection - used to throw the whole
+      // session away and leave an orphaned recording with no shot list beside
+      // it. Keep what was recorded and cut the demo short instead.
+      if (session.steps.length === 0) throw error;
+      log.warn(
+        `The scout stopped early after ${fmtCount(session.steps.length, "recorded step")}: ` +
+          (error as Error).message.split("\n")[0],
+      );
+      log.detail(dim("  Cutting the demo from the steps it did record."));
     }
 
     if (session.steps.length === 0) {
-      throw new Error(
-        "The scout recorded no steps, so there is nothing to cut a video from.",
-      );
+      // Three very different failures used to share one message, which sent
+      // the reader looking at the recorder when the fault was elsewhere.
+      const why =
+        turns >= budget
+          ? `It used all ${budget} turns exploring and never started recording. ` +
+            `Re-run with --max-turns above ${budget}.`
+          : session.finished
+            ? `It called finish after ${turns} turns without recording anything` +
+              (session.summary ? `: "${session.summary}"` : ".")
+            : `It stopped after ${turns} turns and ${fmtCount(toolCalls, "tool call")} ` +
+              `(stop_reason: ${lastStop ?? "unknown"}), without recording anything ` +
+              "or calling finish. Re-run with VDG_TRACE=1 to see which tools it used.";
+      throw new Error(`The scout recorded no steps, so there is nothing to cut. ${why}`);
     }
     log.ok(`Recorded ${fmtCount(session.steps.length, "step")} on camera`);
 

@@ -28,6 +28,7 @@ export interface RecordOptions {
   onePass?: boolean;
   dryRun?: boolean;
   crf?: number;
+  maxTurns?: number;
 }
 
 /**
@@ -92,6 +93,7 @@ export async function record(request: string, options: RecordOptions): Promise<n
     ...(options.burnSubs ? { burnSubs: true } : {}),
     ...(options.headed !== undefined ? { headed: options.headed } : {}),
     ...(options.crf !== undefined ? { crf: options.crf } : {}),
+    ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
   };
 
   const result = await runDemo(run);

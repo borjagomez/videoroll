@@ -82,6 +82,11 @@ program
     "--one-pass",
     "scout and film in a single run, for features that cannot be replayed (no verification)",
   )
+  .option(
+    "--max-turns <n>",
+    "turns a --one-pass session may take, exploring and recording together",
+    Number,
+  )
   .option("--dry-run", "match the feature and print the storyboard, then stop")
   .option("--crf <n>", "x264 quality, lower is better (default 18)", Number)
   .action(async (request: string, opts) => {

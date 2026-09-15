@@ -313,11 +313,17 @@ export async function sessionIsValid(profile: string, url: string): Promise<bool
     });
     const page = await context.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await page.waitForTimeout(1500);
-    const expired = await isOnLoginScreen(page);
-    if (expired) log.warn(dim("saved session is no longer valid"));
-    return !expired;
+
+    // Prove the session works, rather than failing to prove it does not. The
+    // product is a single-page app: it boots, then discovers its token is no
+    // good, then redirects to the ID host. Looked at too early it shows an app
+    // URL and no login form, which reads as a healthy session and is not one -
+    // the scout then launches into a logged-out product and spends its whole
+    // budget looking for a way in.
+    await waitUntilSignedIn(page, 15_000, profile);
+    return true;
   } catch {
+    log.warn(dim("saved session is no longer valid"));
     return false;
   } finally {
     await browser.close();

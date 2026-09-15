@@ -58,6 +58,8 @@ export interface RunDemoOptions {
   burnSubs?: boolean;
   headed?: boolean;
   crf?: number;
+  /** Turns a filmed one-pass session may take before it gives up. */
+  maxTurns?: number;
 }
 
 export interface DemoResult {
@@ -134,6 +136,7 @@ async function buildScript(
       appMap,
       profile: options.profile,
       ...(options.headed !== undefined ? { headed: options.headed } : {}),
+      ...(options.maxTurns !== undefined ? { maxIterations: options.maxTurns } : {}),
     });
     writeArtifact(stepsPath(shot.script.slug), DemoScriptSchema, shot.script);
     writeArtifact(sessionCutPath(shot.script.slug), SessionCutSchema, {
