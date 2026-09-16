@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type Anthropic from "@anthropic-ai/sdk";
-import { getClient, buildSystem } from "../llm/client.js";
+import { getClient, buildSystem , CACHE_CONVERSATION } from "../llm/client.js";
 import { MODEL, EFFORT, config } from "../config.js";
 import { searchFeatures } from "../commands/features.js";
 import { readArtifact } from "../io.js";
@@ -195,6 +195,7 @@ export async function* chat(
       user: "",
     }),
     output_config: { effort: EFFORT },
+    cache_control: CACHE_CONVERSATION,
     tools: tools(),
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
     max_iterations: 12,

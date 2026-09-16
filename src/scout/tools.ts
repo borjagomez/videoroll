@@ -24,6 +24,31 @@ export interface ScoutSessionOptions {
 }
 
 /**
+ * How many actions may change nothing before the run is called off.
+ *
+ * High enough that the model can try two or three ways round an obstacle -
+ * clicking the label, then the input, then a different control - and low
+ * enough that it cannot spend fifty turns doing it.
+ */
+export const STALL_LIMIT = 8;
+
+/**
+ * Score one action against the stall counter.
+ *
+ * Recording a step is progress by definition. Changing the screen is progress
+ * too even when the model is only exploring - it opened a menu, it moved to
+ * another tab, it learned something. An action that does neither taught nobody
+ * anything, and a run of them means the model is pressing something that does
+ * not answer.
+ */
+export function countStall(
+  previous: number,
+  outcome: { recorded: boolean; screenChanged: boolean },
+): number {
+  return outcome.recorded || outcome.screenChanged ? 0 : previous + 1;
+}
+
+/**
  * Holds everything one scouting run mutates: the live page, the latest
  * snapshot, and the script being assembled.
  *
@@ -47,6 +72,9 @@ export class ScoutSession {
   private snapshot: Snapshot | null = null;
   private nextId = 1;
   private actionStartedAt = 0;
+  private deadActions = 0;
+  private lastScreen = "";
+  private lastAttempt = "";
 
   constructor(
     private readonly page: Page,
@@ -56,6 +84,26 @@ export class ScoutSession {
 
   private get cinematic(): boolean {
     return this.options.cinematic === true;
+  }
+
+  /**
+   * The scout is fighting something it cannot operate.
+   *
+   * An action that records a step, or that changes the screen, is progress even
+   * when the model is still exploring. Neither of those, several times running,
+   * means the same thing every time it has happened: a control that does not
+   * respond the way the model expects - a masked time field, a button that
+   * stays disabled, a dialog that will not close. Left alone the model will
+   * spend its entire iteration budget there and finish with nothing, which is
+   * both the expensive failure and the slow one.
+   */
+  get stalled(): boolean {
+    return this.deadActions >= STALL_LIMIT;
+  }
+
+  /** The last thing the scout tried, so a stall can say what it died on. */
+  get stalledOn(): string {
+    return this.lastAttempt;
   }
 
   /** Marks the instant a tool began acting, so its segment starts there. */
@@ -173,6 +221,13 @@ export class ScoutSession {
     if (recorded && last && this.options.videoOrigin !== undefined) {
       last.endMs = Date.now() - this.options.videoOrigin;
     }
+    this.deadActions = countStall(this.deadActions, {
+      recorded,
+      screenChanged: snapshot !== this.lastScreen,
+    });
+    this.lastScreen = snapshot;
+    this.lastAttempt = what;
+
     const tag = recorded ? "recorded" : "not recorded (exploring)";
     return `${what} — ${tag}.\n\n${snapshot}`;
   }

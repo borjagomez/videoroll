@@ -45,6 +45,55 @@ export function buildSystem(p: Prompt): Anthropic.Beta.BetaTextBlockParam[] {
   return blocks;
 }
 
+/**
+ * Cache the conversation, not just the system prefix.
+ *
+ * A tool loop resends the whole conversation on every iteration, so with a
+ * breakpoint only on the system prefix the cost grows with the square of the
+ * loop length: one 50-iteration scout run billed 2,921,003 input tokens against
+ * a conversation that ended at 122,285 - the same tokens bought twenty-four
+ * times over. Top-level cache control marks the last cacheable block of each
+ * request automatically, so the breakpoint rolls forward with the conversation
+ * and every turn reads the previous one back at a tenth of the price.
+ *
+ * It costs nothing to be wrong about: a miss just bills what it would have
+ * billed anyway.
+ */
+export const CACHE_CONVERSATION: Anthropic.Beta.BetaCacheControlEphemeral = {
+  type: "ephemeral",
+};
+
+/**
+ * Let the model forget screens it has already left.
+ *
+ * Every action the scout takes returns a fresh snapshot of the page, and those
+ * pile up: fifty turns means fifty descriptions of the same app, of which only
+ * the last is true. Clearing the superseded ones keeps the context - and the
+ * bill - from growing with the length of the session.
+ *
+ * `keep` is what stops this from being lobotomy: the recent screens stay, and
+ * the tool *inputs* are never cleared, so the model can always see what it did,
+ * just not the stale pictures of where it did it.
+ *
+ * The trigger is deliberately well above the point where clearing becomes
+ * worthwhile. Each clear rewrites the prefix and so throws away the cache above,
+ * which is the opposite of what CACHE_CONVERSATION is for; firing rarely means
+ * long cached stretches broken by the occasional reset, rather than a cache that
+ * never survives a turn.
+ */
+export const FORGET_STALE_SCREENS = {
+  edits: [
+    {
+      type: "clear_tool_uses_20250919" as const,
+      trigger: { type: "input_tokens" as const, value: 60_000 },
+      keep: { type: "tool_uses" as const, value: 5 },
+    },
+  ],
+};
+
+/** The beta that FORGET_STALE_SCREENS rides on. */
+export const CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";
+
 export function reportUsage(label: string, usage: Anthropic.Beta.BetaUsage): void {
   const read = usage.cache_read_input_tokens ?? 0;
   const written = usage.cache_creation_input_tokens ?? 0;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Page } from "playwright";
-import { ScoutSession } from "./tools.js";
+import { ScoutSession, countStall, STALL_LIMIT } from "./tools.js";
 import { DemoScriptSchema, type Step } from "../types.js";
 
 /** `seed` never touches the page, so a repair round can be tested without one. */
@@ -64,5 +64,32 @@ describe("ScoutSession.seed", () => {
 
     const ids = session.steps.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("countStall", () => {
+  it("counts actions that change nothing and record nothing", () => {
+    let dead = 0;
+    for (let i = 0; i < 5; i++) {
+      dead = countStall(dead, { recorded: false, screenChanged: false });
+    }
+    expect(dead).toBe(5);
+  });
+
+  it("forgives an action that recorded a step", () => {
+    const dead = countStall(7, { recorded: true, screenChanged: false });
+    expect(dead).toBe(0);
+  });
+
+  it("forgives exploring that moved the screen", () => {
+    const dead = countStall(7, { recorded: false, screenChanged: true });
+    expect(dead).toBe(0);
+  });
+
+  it("gives the model room to try a few ways round an obstacle", () => {
+    // The run this guard exists for spent all 50 iterations on one masked time
+    // field. Tripping at 8 stops that while still allowing a couple of retries.
+    expect(STALL_LIMIT).toBeGreaterThan(3);
+    expect(STALL_LIMIT).toBeLessThan(15);
   });
 });

@@ -1,5 +1,12 @@
 import type { Browser, BrowserContext } from "playwright";
-import { getClient, buildSystem, reportUsage } from "../llm/client.js";
+import {
+  getClient,
+  buildSystem,
+  reportUsage,
+  CACHE_CONVERSATION,
+  CONTEXT_MANAGEMENT_BETA,
+  FORGET_STALE_SCREENS,
+} from "../llm/client.js";
 import { MODEL, EFFORT } from "../config.js";
 import { launch, newContext } from "../browser.js";
 import { storageStatePath } from "../paths.js";
@@ -159,6 +166,9 @@ async function runRound(
         user: "",
       }),
       output_config: { effort: EFFORT },
+      cache_control: CACHE_CONVERSATION,
+      betas: [CONTEXT_MANAGEMENT_BETA],
+      context_management: FORGET_STALE_SCREENS,
       tools: session.tools(),
       messages: [{ role: "user", content: user }],
       max_iterations: options.maxIterations ?? 50,
@@ -172,12 +182,23 @@ async function runRound(
         }
       }
       if (session.finished) break;
+      if (session.stalled) {
+        log.warn(
+          `The scout stopped making progress - the screen stopped responding ` +
+            `to it while it was doing this: ${session.stalledOn}`,
+        );
+        break;
+      }
     }
 
     if (!session.finished && session.steps.length === 0) {
       throw new Error(
-        "The scout stopped without recording any step. Re-run with --headed to " +
-          "watch what it is seeing.",
+        (session.stalled
+          ? `The scout got stuck and recorded no step. The last thing it tried, ` +
+            `repeatedly and with no effect on the screen, was: ${session.stalledOn}. ` +
+            `That control is the thing to look at.`
+          : `The scout stopped without recording any step.`) +
+          ` Re-run with --headed to watch what it is seeing.`,
       );
     }
 

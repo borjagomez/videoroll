@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getClient, buildSystem, reportUsage } from "../llm/client.js";
+import {
+  getClient,
+  buildSystem,
+  reportUsage,
+  CACHE_CONVERSATION,
+  CONTEXT_MANAGEMENT_BETA,
+  FORGET_STALE_SCREENS,
+} from "../llm/client.js";
 import { MODEL, EFFORT, config } from "../config.js";
 import { launch, newContext, waitForContent } from "../browser.js";
 import { storageStatePath, rawVideoDir, ensureDir } from "../paths.js";
@@ -121,6 +128,9 @@ export async function scoutOneShot(options: OneShotOptions): Promise<OneShotResu
         user: "",
       }),
       output_config: { effort: EFFORT },
+      cache_control: CACHE_CONVERSATION,
+      betas: [CONTEXT_MANAGEMENT_BETA],
+      context_management: FORGET_STALE_SCREENS,
       tools: session.tools(),
       messages: [
         {
@@ -150,6 +160,16 @@ export async function scoutOneShot(options: OneShotOptions): Promise<OneShotResu
           }
         }
         if (session.finished) break;
+        if (session.stalled) {
+          // One-pass films as it scouts, so a stall here also fills the
+          // recording with a control being poked to no effect. Stop early and
+          // cut what was worth keeping rather than run the budget out.
+          log.warn(
+            `The scout stopped making progress - the screen stopped responding ` +
+              `to it while it was doing this: ${session.stalledOn}`,
+          );
+          break;
+        }
       }
     } catch (error) {
       // The steps recorded so far are already on film, and the film is the

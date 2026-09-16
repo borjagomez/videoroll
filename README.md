@@ -233,7 +233,7 @@ mount it or a restart loses the library. Debian's ffmpeg includes libass, so
 
 ```bash
 pnpm typecheck
-pnpm test          # 35 tests; the integration suite starts its own server + browser
+pnpm test          # 84 tests; the integration suites start their own server + browser
 ```
 
 `fixtures/` holds a complete offline target: a static help center and a small
