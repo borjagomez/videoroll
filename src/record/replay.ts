@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 import { resolve, describe } from "../scout/locator.js";
 import { moveCursor, rippleAt, highlight, ensureCursor, placeCursor } from "./cursor.js";
+import { typeInto } from "./typing.js";
 import type { Step } from "../types.js";
 import { waitForContent } from "../browser.js";
 import { log, dim } from "../log.js";
@@ -109,15 +110,9 @@ async function runStep(page: Page, step: Step, cinematic: boolean): Promise<void
       await locator.click({ timeout: 15_000 });
       break;
     case "fill":
-      if (cinematic) {
-        // Typing character by character reads as a person filling the form;
-        // fill() would make the text appear all at once.
-        await locator.click({ timeout: 15_000 });
-        await locator.fill("");
-        await locator.pressSequentially(step.value ?? "", { delay: 45 });
-      } else {
-        await locator.fill(step.value ?? "", { timeout: 15_000 });
-      }
+      // Typing character by character reads as a person filling the form;
+      // fill() would make the text appear all at once.
+      await typeInto(locator, step.value ?? "", { cinematic, timeout: 15_000 });
       break;
     case "select":
       await locator.selectOption({ label: step.value ?? "" }, { timeout: 15_000 });

@@ -5,6 +5,7 @@ import { captureSnapshot, deriveLocator, refSelector, type Snapshot } from "./sn
 import { describe } from "./locator.js";
 import { settle } from "../browser.js";
 import { moveCursor, rippleAt, highlight } from "../record/cursor.js";
+import { typeInto } from "../record/typing.js";
 import type { Step, StepAction } from "../types.js";
 import { log, dim } from "../log.js";
 
@@ -286,14 +287,11 @@ export class ScoutSession {
           this.beginAction();
           await this.approach(ref);
           const field = this.page.locator(refSelector(ref));
-          if (this.cinematic) {
-            // Typed, not pasted - the same reading as the deterministic recorder.
-            await field.click({ timeout: 10_000 });
-            await field.fill("");
-            await field.pressSequentially(value, { delay: 45 });
-          } else {
-            await field.fill(value, { timeout: 10_000 });
-          }
+          // Typed, not pasted - the same reading as the deterministic recorder.
+          await typeInto(field, value, {
+            cinematic: this.cinematic,
+            timeout: 10_000,
+          });
           await this.afterAction();
           if (record) {
             this.record("fill", {
